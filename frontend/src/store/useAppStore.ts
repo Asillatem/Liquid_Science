@@ -6,9 +6,14 @@ import type {
   SelectionState,
   ProjectMetadata,
   SnippetNode,
+  SnippetEdge,
   PDFLocation,
   ProjectData,
+  PersistentHighlight,
+  Comment,
 } from '../types';
+import type { Connection, EdgeChange } from 'reactflow';
+import { applyEdgeChanges } from 'reactflow';
 
 interface AppStore {
   // PDF State
@@ -17,6 +22,10 @@ interface AppStore {
 
   // Canvas State
   nodes: SnippetNode[];
+  edges: SnippetEdge[];
+
+  // Highlight State
+  highlights: PersistentHighlight[];
 
   // Selection State
   selectionState: SelectionState;
@@ -32,10 +41,26 @@ interface AppStore {
   setPdfScale: (scale: number) => void;
   setHighlightedRect: (rect: PDFLocation | null) => void;
 
-  // Canvas Actions
+  // Canvas Node Actions
   addNode: (node: SnippetNode) => void;
   removeNode: (nodeId: string) => void;
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
+
+  // Canvas Edge Actions
+  addEdge: (edge: SnippetEdge) => void;
+  removeEdge: (edgeId: string) => void;
+  onEdgesChange: (changes: EdgeChange[]) => void;
+  onConnect: (connection: Connection) => void;
+
+  // Highlight Actions
+  addHighlight: (highlight: PersistentHighlight) => void;
+  removeHighlight: (highlightId: string) => void;
+  getHighlightsForPage: (pageIndex: number) => PersistentHighlight[];
+
+  // Comment Actions
+  addComment: (nodeId: string, text: string) => void;
+  updateComment: (nodeId: string, commentId: string, text: string) => void;
+  deleteComment: (nodeId: string, commentId: string) => void;
 
   // Selection Actions
   startSelection: (pageIndex: number, point: { x: number; y: number }) => void;
@@ -64,6 +89,10 @@ export const useAppStore = create<AppStore>()(
 
       // Initial Canvas State
       nodes: [],
+      edges: [],
+
+      // Initial Highlight State
+      highlights: [],
 
       // Initial Selection State
       selectionState: {
@@ -145,6 +174,10 @@ export const useAppStore = create<AppStore>()(
       removeNode: (nodeId) =>
         set((state) => ({
           nodes: state.nodes.filter((n) => n.id !== nodeId),
+          edges: state.edges.filter(
+            (e) => e.source !== nodeId && e.target !== nodeId
+          ),
+          highlights: state.highlights.filter((h) => h.id !== nodeId),
           isDirty: true,
           projectMetadata: {
             ...state.projectMetadata,
@@ -156,6 +189,148 @@ export const useAppStore = create<AppStore>()(
         set((state) => ({
           nodes: state.nodes.map((n) =>
             n.id === nodeId ? { ...n, position } : n
+          ),
+          isDirty: true,
+        })),
+
+      // Edge Actions
+      addEdge: (edge) =>
+        set((state) => ({
+          edges: [...state.edges, edge],
+          isDirty: true,
+          projectMetadata: {
+            ...state.projectMetadata,
+            modified: Date.now(),
+          },
+        })),
+
+      removeEdge: (edgeId) =>
+        set((state) => ({
+          edges: state.edges.filter((e) => e.id !== edgeId),
+          isDirty: true,
+          projectMetadata: {
+            ...state.projectMetadata,
+            modified: Date.now(),
+          },
+        })),
+
+      onEdgesChange: (changes) =>
+        set((state) => ({
+          edges: applyEdgeChanges(changes, state.edges) as SnippetEdge[],
+          isDirty: true,
+        })),
+
+      onConnect: (connection) => {
+        if (!connection.source || !connection.target) return;
+        if (connection.source === connection.target) return; // Prevent self-connections
+
+        const state = get();
+        // Check for duplicate edges
+        const exists = state.edges.some(
+          (e) =>
+            e.source === connection.source && e.target === connection.target
+        );
+        if (exists) return;
+
+        const newEdge: SnippetEdge = {
+          id: `edge-${Date.now()}`,
+          source: connection.source,
+          target: connection.target,
+          sourceHandle: connection.sourceHandle || undefined,
+          targetHandle: connection.targetHandle || undefined,
+          type: 'smoothstep',
+        };
+
+        set((state) => ({
+          edges: [...state.edges, newEdge],
+          isDirty: true,
+          projectMetadata: {
+            ...state.projectMetadata,
+            modified: Date.now(),
+          },
+        }));
+      },
+
+      // Highlight Actions
+      addHighlight: (highlight) =>
+        set((state) => ({
+          highlights: [...state.highlights, highlight],
+          isDirty: true,
+        })),
+
+      removeHighlight: (highlightId) =>
+        set((state) => ({
+          highlights: state.highlights.filter((h) => h.id !== highlightId),
+          isDirty: true,
+        })),
+
+      getHighlightsForPage: (pageIndex) => {
+        const state = get();
+        return state.highlights.filter((h) => h.pageIndex === pageIndex);
+      },
+
+      // Comment Actions
+      addComment: (nodeId, text) =>
+        set((state) => ({
+          nodes: state.nodes.map((n) =>
+            n.id === nodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    comments: [
+                      ...(n.data.comments || []),
+                      {
+                        id: `comment-${Date.now()}`,
+                        text,
+                        timestamp: Date.now(),
+                      },
+                    ],
+                  },
+                }
+              : n
+          ),
+          isDirty: true,
+          projectMetadata: {
+            ...state.projectMetadata,
+            modified: Date.now(),
+          },
+        })),
+
+      updateComment: (nodeId, commentId, text) =>
+        set((state) => ({
+          nodes: state.nodes.map((n) =>
+            n.id === nodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    comments: (n.data.comments || []).map((c) =>
+                      c.id === commentId
+                        ? { ...c, text, edited: Date.now() }
+                        : c
+                    ),
+                  },
+                }
+              : n
+          ),
+          isDirty: true,
+        })),
+
+      deleteComment: (nodeId, commentId) =>
+        set((state) => ({
+          nodes: state.nodes.map((n) =>
+            n.id === nodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    comments: (n.data.comments || []).filter(
+                      (c) => c.id !== commentId
+                    ),
+                  },
+                }
+              : n
           ),
           isDirty: true,
         })),
@@ -227,6 +402,7 @@ export const useAppStore = create<AppStore>()(
             modified: Date.now(),
           },
           nodes: state.nodes,
+          edges: state.edges,
           pdfState: {
             activePdf: state.selectedPdf?.path || null,
             currentPage: state.pdfViewerState.currentPage,
@@ -258,7 +434,15 @@ export const useAppStore = create<AppStore>()(
       loadProject: (data) =>
         set({
           projectMetadata: data.metadata,
-          nodes: data.nodes,
+          // Ensure backward compatibility: initialize comments array for old nodes
+          nodes: data.nodes.map((n) => ({
+            ...n,
+            data: {
+              ...n.data,
+              comments: n.data.comments || [],
+            },
+          })),
+          edges: data.edges || [], // Handle old projects without edges
           pdfViewerState: {
             currentPage: data.pdfState.currentPage,
             scale: data.pdfState.scale,
@@ -271,6 +455,8 @@ export const useAppStore = create<AppStore>()(
       newProject: () =>
         set({
           nodes: [],
+          edges: [],
+          highlights: [],
           selectedPdf: null,
           pdfViewerState: {
             currentPage: 1,
@@ -302,6 +488,8 @@ export const useAppStore = create<AppStore>()(
       partialize: (state) => ({
         // Only persist certain state
         nodes: state.nodes,
+        edges: state.edges,
+        highlights: state.highlights,
         projectMetadata: state.projectMetadata,
         selectedPdf: state.selectedPdf,
         pdfViewerState: {

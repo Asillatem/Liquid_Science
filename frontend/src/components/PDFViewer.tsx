@@ -1,3 +1,4 @@
+import { useEffect, useRef, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -5,16 +6,129 @@ import { useAppStore } from '../store/useAppStore';
 import { getPdfUrl } from '../api';
 import { SelectionLayer } from './SelectionLayer';
 import { HighlightOverlay } from './HighlightOverlay';
+import { PersistentHighlights } from './PersistentHighlights';
+import {
+  clientRectsToPageRelative,
+  calculateBoundingBox,
+  filterSmallRects,
+  normalizeRects,
+} from '../utils/highlightUtils';
+import { domRectToPdfRect } from '../utils/coordinates';
+import type { SnippetNode } from '../types';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export function PDFViewer() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const selectedPdf = useAppStore((state) => state.selectedPdf);
   const pdfViewerState = useAppStore((state) => state.pdfViewerState);
+  const nodes = useAppStore((state) => state.nodes);
   const setPdfNumPages = useAppStore((state) => state.setPdfNumPages);
+  const addNode = useAppStore((state) => state.addNode);
+  const addHighlight = useAppStore((state) => state.addHighlight);
 
+  const { currentPage, scale } = pdfViewerState;
   const pdfUrl = selectedPdf ? getPdfUrl(selectedPdf.path) : null;
+
+  // Handle native text selection
+  const handleTextSelection = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+
+    const text = selection.toString().trim();
+    if (!text) return;
+
+    // Ensure selection is within our PDF container
+    const anchorNode = selection.anchorNode;
+    if (!anchorNode || !containerRef.current?.contains(anchorNode)) {
+      return;
+    }
+
+    // Get the page container element
+    const pageContainer = containerRef.current?.querySelector('.react-pdf__Page');
+    if (!pageContainer) {
+      selection.removeAllRanges();
+      return;
+    }
+
+    // Get all DOMRects from the selection (one per line for multi-line)
+    const range = selection.getRangeAt(0);
+    const clientRects = Array.from(range.getClientRects());
+
+    if (clientRects.length === 0) {
+      selection.removeAllRanges();
+      return;
+    }
+
+    // Convert client rects to page-relative coordinates
+    let pageRelativeRects = clientRectsToPageRelative(clientRects, pageContainer);
+
+    // Filter out tiny artifacts
+    pageRelativeRects = filterSmallRects(pageRelativeRects);
+
+    if (pageRelativeRects.length === 0) {
+      selection.removeAllRanges();
+      return;
+    }
+
+    // Normalize to scale 1.0 for storage
+    const normalizedRects = normalizeRects(pageRelativeRects, scale);
+
+    // Calculate bounding box for PDF location
+    const boundingBox = calculateBoundingBox(normalizedRects);
+
+    // Get page height for coordinate conversion
+    const pageRect = pageContainer.getBoundingClientRect();
+    const pageHeight = pageRect.height / scale;
+
+    // Convert bounding box to PDF coordinates
+    const pdfRect = domRectToPdfRect(boundingBox, pageHeight, 1.0);
+
+    // Create the snippet node
+    const nodeId = `node-${Date.now()}`;
+    const newNode: SnippetNode = {
+      id: nodeId,
+      type: 'snippetNode',
+      data: {
+        label: text,
+        sourcePdf: selectedPdf?.path || '',
+        location: {
+          pageIndex: currentPage - 1,
+          rect: pdfRect,
+          highlightRects: normalizedRects,
+        },
+        comments: [],
+      },
+      position: {
+        x: 100 + (nodes.length * 30) % 400,
+        y: 100 + (nodes.length * 30) % 400,
+      },
+    };
+
+    addNode(newNode);
+
+    // Also add to highlights for rendering
+    addHighlight({
+      id: nodeId,
+      pageIndex: currentPage - 1,
+      rects: normalizedRects,
+    });
+
+    // Clear the selection
+    selection.removeAllRanges();
+  }, [selectedPdf, currentPage, scale, nodes.length, addNode, addHighlight]);
+
+  // Listen for mouseup to handle text selection
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('mouseup', handleTextSelection);
+    return () => {
+      container.removeEventListener('mouseup', handleTextSelection);
+    };
+  }, [handleTextSelection]);
 
   // Handle document load success
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -38,7 +152,7 @@ export function PDFViewer() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-100">
+    <div ref={containerRef} className="h-full flex flex-col bg-gray-100">
       <div className="flex-1 overflow-auto">
         <div className="flex justify-center p-4">
           <div className="relative">
@@ -72,7 +186,10 @@ export function PDFViewer() {
               />
             </Document>
 
-            {/* Selection overlay for text extraction */}
+            {/* Persistent text highlights */}
+            <PersistentHighlights />
+
+            {/* Selection overlay for bounding-box text extraction (fallback mode) */}
             <SelectionLayer />
 
             {/* Highlight overlay for bi-directional linking */}
