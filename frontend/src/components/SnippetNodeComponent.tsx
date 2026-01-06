@@ -12,8 +12,7 @@ export function SnippetNodeComponent({ data, selected, id }: NodeProps<SnippetNo
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const [showCommentPopover, setShowCommentPopover] = useState(false);
 
-  const setPdfPage = useAppStore((state) => state.setPdfPage);
-  const setHighlightedRect = useAppStore((state) => state.setHighlightedRect);
+  const jumpToSource = useAppStore((state) => state.jumpToSource);
   const removeNode = useAppStore((state) => state.removeNode);
 
   const comments = data.comments || [];
@@ -21,8 +20,8 @@ export function SnippetNodeComponent({ data, selected, id }: NodeProps<SnippetNo
 
   const handleJumpToSource = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setPdfPage(data.location.pageIndex + 1);
-    setHighlightedRect(data.location);
+    // Jump to the source PDF and page, switching documents if needed
+    jumpToSource(data.sourcePdf, data.location);
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {

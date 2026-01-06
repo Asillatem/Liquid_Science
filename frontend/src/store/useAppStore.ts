@@ -40,6 +40,7 @@ interface AppStore {
   setPdfNumPages: (numPages: number) => void;
   setPdfScale: (scale: number) => void;
   setHighlightedRect: (rect: PDFLocation | null) => void;
+  jumpToSource: (pdfPath: string, location: PDFLocation) => void;
 
   // Canvas Node Actions
   addNode: (node: SnippetNode) => void;
@@ -159,6 +160,35 @@ export const useAppStore = create<AppStore>()(
             highlightedRect: rect,
           },
         })),
+
+      jumpToSource: (pdfPath, location) =>
+        set((state) => {
+          // Extract filename from path
+          const name = pdfPath.split(/[/\\]/).pop() || pdfPath;
+
+          // Check if we need to switch PDFs
+          const needsSwitch = state.selectedPdf?.path !== pdfPath;
+
+          return {
+            selectedPdf: needsSwitch
+              ? { name, path: pdfPath }
+              : state.selectedPdf,
+            pdfViewerState: {
+              ...state.pdfViewerState,
+              currentPage: location.pageIndex + 1,
+              highlightedRect: location,
+              // Reset numPages if switching PDFs (will be set when PDF loads)
+              numPages: needsSwitch ? null : state.pdfViewerState.numPages,
+            },
+            projectMetadata: needsSwitch
+              ? {
+                  ...state.projectMetadata,
+                  activePdf: pdfPath,
+                  modified: Date.now(),
+                }
+              : state.projectMetadata,
+          };
+        }),
 
       // Canvas Actions
       addNode: (node) =>

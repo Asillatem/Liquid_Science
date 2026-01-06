@@ -37,7 +37,8 @@ export function PDFViewer() {
     if (!selection || selection.isCollapsed) return;
 
     const text = selection.toString().trim();
-    if (!text) return;
+    // Require minimum 3 characters to prevent accidental selections
+    if (!text || text.length < 3) return;
 
     // Ensure selection is within our PDF container
     const anchorNode = selection.anchorNode;
@@ -64,10 +65,21 @@ export function PDFViewer() {
     // Convert client rects to page-relative coordinates
     let pageRelativeRects = clientRectsToPageRelative(clientRects, pageContainer);
 
-    // Filter out tiny artifacts
-    pageRelativeRects = filterSmallRects(pageRelativeRects);
+    // Filter out tiny artifacts (increased thresholds)
+    pageRelativeRects = filterSmallRects(pageRelativeRects, 5, 5);
 
     if (pageRelativeRects.length === 0) {
+      selection.removeAllRanges();
+      return;
+    }
+
+    // Calculate total selection area to prevent marking the whole page
+    const totalArea = pageRelativeRects.reduce((sum, r) => sum + r.width * r.height, 0);
+    const pageRect = pageContainer.getBoundingClientRect();
+    const pageArea = pageRect.width * pageRect.height;
+
+    // If selection covers more than 50% of the page, it's probably an error
+    if (totalArea > pageArea * 0.5) {
       selection.removeAllRanges();
       return;
     }
@@ -79,7 +91,6 @@ export function PDFViewer() {
     const boundingBox = calculateBoundingBox(normalizedRects);
 
     // Get page height for coordinate conversion
-    const pageRect = pageContainer.getBoundingClientRect();
     const pageHeight = pageRect.height / scale;
 
     // Convert bounding box to PDF coordinates
@@ -108,9 +119,10 @@ export function PDFViewer() {
 
     addNode(newNode);
 
-    // Also add to highlights for rendering
+    // Also add to highlights for rendering (include pdfPath)
     addHighlight({
       id: nodeId,
+      pdfPath: selectedPdf?.path || '',
       pageIndex: currentPage - 1,
       rects: normalizedRects,
     });

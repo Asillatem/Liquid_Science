@@ -1,10 +1,14 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { pdfjs } from 'react-pdf';
 import { useAppStore } from '../store/useAppStore';
 import { domRectToPdfRect } from '../utils/coordinates';
 import { extractTextFromRect } from '../utils/textExtraction';
 import type { SnippetNode } from '../types';
 
+/**
+ * SelectionLayer provides bounding-box text extraction as a fallback mode.
+ * Hold Alt key to use bounding-box selection instead of native text selection.
+ */
 export function SelectionLayer() {
   const selectionState = useAppStore((state) => state.selectionState);
   const pdfViewerState = useAppStore((state) => state.pdfViewerState);
@@ -17,8 +21,26 @@ export function SelectionLayer() {
   const nodes = useAppStore((state) => state.nodes);
 
   const [pdfDoc, setPdfDoc] = useState<pdfjs.PDFDocumentProxy | null>(null);
+  const [altKeyPressed, setAltKeyPressed] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  // Track Alt key state for fallback bounding-box mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey) setAltKeyPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.altKey) setAltKeyPressed(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   // Get PDF document for text extraction
   const loadPdfDocument = async () => {
@@ -105,6 +127,7 @@ export function SelectionLayer() {
                 pageIndex: pdfViewerState.currentPage - 1,
                 rect: pdfRect,
               },
+              comments: [],
             },
             position: {
               // Position nodes in a cascading layout
@@ -130,18 +153,24 @@ export function SelectionLayer() {
   // Don't render if no PDF is selected
   if (!selectedPdf) return null;
 
+  // Only show the overlay when Alt key is pressed (bounding-box fallback mode)
+  // or when actively selecting
+  const showOverlay = altKeyPressed || selectionState.isSelecting;
+
   return (
     <>
-      {/* Invisible overlay for capturing mouse events */}
-      <div
-        ref={layerRef}
-        className="absolute inset-0 cursor-crosshair"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        style={{ zIndex: 10 }}
-      />
+      {/* Invisible overlay for capturing mouse events - only active with Alt key */}
+      {showOverlay && (
+        <div
+          ref={layerRef}
+          className="absolute inset-0 cursor-crosshair"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          style={{ zIndex: 10 }}
+        />
+      )}
 
       {/* Visual feedback for selection rectangle */}
       {selectionState.isSelecting && selectionState.currentRect && (
@@ -155,6 +184,13 @@ export function SelectionLayer() {
             zIndex: 20,
           }}
         />
+      )}
+
+      {/* Hint when Alt is pressed */}
+      {altKeyPressed && !selectionState.isSelecting && (
+        <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded pointer-events-none" style={{ zIndex: 25 }}>
+          Bounding-box mode: Drag to select area
+        </div>
       )}
     </>
   );

@@ -9,10 +9,11 @@ export function PersistentHighlights() {
   const currentPage = useAppStore((state) => state.pdfViewerState.currentPage);
   const scale = useAppStore((state) => state.pdfViewerState.scale);
   const highlights = useAppStore((state) => state.highlights);
+  const selectedPdf = useAppStore((state) => state.selectedPdf);
 
-  // Filter highlights for current page
+  // Filter highlights for current page AND current PDF
   const pageHighlights = highlights.filter(
-    (h) => h.pageIndex === currentPage - 1
+    (h) => h.pageIndex === currentPage - 1 && h.pdfPath === selectedPdf?.path
   );
 
   if (pageHighlights.length === 0) return null;

@@ -17,6 +17,7 @@ export interface HighlightRect {
 // Persistent highlight stored with snippets
 export interface PersistentHighlight {
   id: string; // Matches associated SnippetNode id
+  pdfPath: string; // PDF file path this highlight belongs to
   pageIndex: number;
   rects: HighlightRect[]; // Array for multi-line support
   color?: string; // Optional highlight color
