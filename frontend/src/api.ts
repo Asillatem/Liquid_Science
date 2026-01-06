@@ -12,13 +12,15 @@ export async function fetchFiles(): Promise<FileEntry[]> {
   if (!Array.isArray(data)) return []
 
   // Backend may return Windows paths or Zotero-style subpaths.
-  // Normalize to a flat list of { name, path }
+  // Normalize to a flat list of { name, path, type }
   const entries: FileEntry[] = data.map((it: any) => {
     const raw = it.filename ?? it.path ?? String(it)
     // split on both forward and backward slashes
     const parts = raw.split(/[/\\\\]+/)
     const name = parts[parts.length - 1]
-    return { name, path: raw, size: it.size, modified: it.modified }
+    // Default to 'pdf' for backward compatibility
+    const type = it.type === 'html' ? 'html' : 'pdf'
+    return { name, path: raw, type, size: it.size, modified: it.modified }
   })
   return entries
 }
@@ -31,6 +33,16 @@ export async function fetchFiles(): Promise<FileEntry[]> {
 export function getPdfUrl(filename: string): string {
   const encoded = encodeURIComponent(filename);
   return `http://localhost:8000/pdf/${encoded}`;
+}
+
+/**
+ * Get the URL to stream an HTML file from the backend
+ * @param filename - The HTML filename or path
+ * @returns URL to access the HTML
+ */
+export function getHtmlUrl(filename: string): string {
+  const encoded = encodeURIComponent(filename);
+  return `http://localhost:8000/html/${encoded}`;
 }
 
 /**

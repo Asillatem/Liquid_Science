@@ -2,6 +2,7 @@
 export interface FileEntry {
   name: string;
   path: string;
+  type: 'pdf' | 'html';
   size?: number;
   modified?: number;
 }

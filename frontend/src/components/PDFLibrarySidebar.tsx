@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileText, Save, FolderOpen, FilePlus } from 'lucide-react';
+import { FileText, Globe, Save, FolderOpen, FilePlus } from 'lucide-react';
 import { fetchFiles } from '../api';
 import type { FileEntry } from '../api';
 import { useAppStore } from '../store/useAppStore';
@@ -90,16 +90,16 @@ export function PDFLibrarySidebar() {
         </button>
       </div>
 
-      {/* PDF Library */}
+      {/* File Library */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-3">
           <h3 className="text-sm font-medium text-gray-700 mb-2">
-            PDF Library
+            File Library
           </h3>
 
           {loading && (
             <div className="text-sm text-gray-500 py-4 text-center">
-              Loading PDFs...
+              Loading files...
             </div>
           )}
 
@@ -117,7 +117,7 @@ export function PDFLibrarySidebar() {
 
           {!loading && !error && files.length === 0 && (
             <div className="text-sm text-gray-500 py-4 text-center">
-              No PDFs found
+              No files found
             </div>
           )}
 
@@ -125,37 +125,45 @@ export function PDFLibrarySidebar() {
             <div className="space-y-1">
               {files.map((file) => {
                 const isSelected = selectedPdf?.path === file.path;
+                const isHtml = file.type === 'html';
+                const Icon = isHtml ? Globe : FileText;
+                const iconColorSelected = isHtml ? 'text-green-600' : 'text-blue-600';
+                const iconColorDefault = isHtml ? 'text-green-400' : 'text-gray-400';
+                const bgSelected = isHtml ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200';
+                const textSelected = isHtml ? 'text-green-900' : 'text-blue-900';
+
                 return (
                   <button
                     key={file.path}
                     onClick={() => handleSelectPdf(file)}
                     className={`w-full text-left px-3 py-2 rounded transition-colors flex items-start gap-2 ${
                       isSelected
-                        ? 'bg-blue-50 border border-blue-200'
+                        ? `${bgSelected} border`
                         : 'hover:bg-gray-50 border border-transparent'
                     }`}
                   >
-                    <FileText
+                    <Icon
                       className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                        isSelected ? 'text-blue-600' : 'text-gray-400'
+                        isSelected ? iconColorSelected : iconColorDefault
                       }`}
                     />
                     <div className="flex-1 min-w-0">
                       <div
                         className={`text-sm truncate ${
                           isSelected
-                            ? 'text-blue-900 font-medium'
+                            ? `${textSelected} font-medium`
                             : 'text-gray-700'
                         }`}
                         title={file.name}
                       >
                         {file.name}
                       </div>
-                      {file.size && (
-                        <div className="text-xs text-gray-400">
-                          {formatFileSize(file.size)}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <span className={isHtml ? 'text-green-500' : 'text-blue-500'}>
+                          {isHtml ? 'HTML' : 'PDF'}
+                        </span>
+                        {file.size && <span>{formatFileSize(file.size)}</span>}
+                      </div>
                     </div>
                   </button>
                 );
@@ -167,7 +175,11 @@ export function PDFLibrarySidebar() {
 
       {/* Footer */}
       <div className="p-3 border-t border-gray-200 text-xs text-gray-500">
-        {files.length} PDF{files.length !== 1 ? 's' : ''} available
+        {(() => {
+          const pdfCount = files.filter(f => f.type === 'pdf').length;
+          const htmlCount = files.filter(f => f.type === 'html').length;
+          return `${files.length} files (${pdfCount} PDFs, ${htmlCount} HTMLs)`;
+        })()}
       </div>
     </aside>
   );

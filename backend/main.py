@@ -17,7 +17,7 @@ from typing import List, Optional
 
 PDF_DIR = Path(os.environ.get("PDF_DIR", "C:/Users/JOG/Zotero/storage"))
 PROJECTS_DIR = Path(os.environ.get("PROJECTS_DIR", str(Path.cwd() / "projects")))
-PDF_EXT = ".pdf"
+SUPPORTED_EXT = [".pdf", ".html", ".htm"]
 
 app = FastAPI(title="Zotero-Spatial Local API")
 
@@ -60,20 +60,23 @@ async def startup_event():
 
 @app.get("/files")
 async def list_files(recursive: Optional[bool] = True) -> List[dict]:
-	"""List PDF files under `PDF_DIR` (recursive by default to accommodate Zotero storage)."""
+	"""List supported files (PDF, HTML) under `PDF_DIR` (recursive by default to accommodate Zotero storage)."""
 	files = []
-	if recursive:
-		iterator = PDF_DIR.rglob(f"*{PDF_EXT}")
-	else:
-		iterator = PDF_DIR.glob(f"*{PDF_EXT}")
-	for p in iterator:
-		if p.is_file():
-			stat = p.stat()
-			files.append({
-				"filename": str(p.relative_to(PDF_DIR)),
-				"size": stat.st_size,
-				"modified": stat.st_mtime,
-			})
+	for ext in SUPPORTED_EXT:
+		if recursive:
+			iterator = PDF_DIR.rglob(f"*{ext}")
+		else:
+			iterator = PDF_DIR.glob(f"*{ext}")
+		for p in iterator:
+			if p.is_file():
+				stat = p.stat()
+				file_type = "html" if ext in [".html", ".htm"] else "pdf"
+				files.append({
+					"filename": str(p.relative_to(PDF_DIR)),
+					"type": file_type,
+					"size": stat.st_size,
+					"modified": stat.st_mtime,
+				})
 	return files
 
 
@@ -92,6 +95,20 @@ async def get_pdf(filename: str, download: Optional[bool] = False):
 	if download:
 		headers["Content-Disposition"] = f'attachment; filename="{target.name}"'
 	return FileResponse(path=str(target), media_type="application/pdf", headers=headers)
+
+
+@app.get("/html/{filename:path}")
+async def get_html(filename: str):
+	"""Stream an HTML file by relative path under `PDF_DIR`.
+	Use `filename` as a URL-encoded relative path.
+	"""
+	try:
+		target = safe_resolve(PDF_DIR, filename)
+	except HTTPException:
+		raise
+	if not target.exists() or not target.is_file():
+		raise HTTPException(status_code=404, detail="File not found")
+	return FileResponse(path=str(target), media_type="text/html")
 
 
 @app.post("/save")
