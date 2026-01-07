@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(npm run dev)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" log --oneline -15)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" remote -v)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" add CLAUDE.md)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" status)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" commit -m \"$\\(cat <<''EOF''\nAdd CLAUDE.md for Claude Code guidance\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" diff --staged)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" log --oneline -3)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" add .claude/skills/ .claude/CHANGELOG.md .claude/tasks.md)",
+      "Bash(git -C \"C:\\\\Users\\\\JOG\\\\liquid_science\" commit -m \"$\\(cat <<''EOF''\nAdd PM and changelog skills with task board\n\n- PM skill: kanban board with agent coordination to prevent conflicts\n- Changelog skill: logs completed tasks to CHANGELOG.md\n- Tasks.md: architecture plan for Zotero Cloud + HTML support\n- CHANGELOG.md: initialized with completed work\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
