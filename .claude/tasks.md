@@ -10,12 +10,12 @@ This plan moves from a "Local PDF Reader" to a "Cloud Research Browser."
 
 **Goal:** Securely manage secrets and establish a robust database.
 
-#### Task 1.1: Implement Environment Variables (.env)
+#### Task 1.1: Implement Environment Variables (.env) ✅
 
 **Backend:**
-- [ ] Add `python-dotenv` to `backend/requirements.txt`
-- [ ] Update `backend/main.py` to load environment variables at startup
-- [ ] Create a `.env.example` file with placeholders:
+- [x] Add `python-dotenv` to `backend/requirements.txt`
+- [x] Update `backend/main.py` to load environment variables at startup
+- [x] Create a `.env.example` file with placeholders:
   ```ini
   # Core
   DATABASE_URL=sqlite:///./liquid_science.db
@@ -25,17 +25,19 @@ This plan moves from a "Local PDF Reader" to a "Cloud Research Browser."
   ZOTERO_API_KEY=
   OPENAI_API_KEY=  # Future use
   ```
-- [ ] Replace hardcoded `PDF_DIR` logic in `main.py` to rely on env vars or fallback gracefully
+- [x] Replace hardcoded `PDF_DIR` logic in `main.py` to rely on env vars or fallback gracefully
 
-#### Task 1.2: SQL Database Setup
+#### Task 1.2: SQL Database Setup ✅
 
 **Backend:**
-- [ ] Replace `project.json` file storage with SQLModel (SQLite for now)
-- [ ] Define Tables:
+- [x] Replace `project.json` file storage with SQLModel (SQLite for now)
+- [x] Define Tables:
   - `User` (id, zotero_id)
   - `Project` (id, user_id, name)
   - `Node` (id, project_id, content, zotero_item_key, position_x, position_y)
   - `Edge` (source_node_id, target_node_id)
+  - `Comment` (id, node_id, text, timestamps)
+  - `Highlight` (id, node_id, document_path, rect coords)
 
 ---
 

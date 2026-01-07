@@ -1,10 +1,7 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import os
-from pathlib import Path
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file before accessing env vars
+
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,12 +11,15 @@ import aiofiles
 import json
 from typing import List, Optional
 
+from database import create_db_and_tables
+from services.zotero import get_zotero_service
+import models  # noqa: F401 - imported for SQLModel metadata
 
-PDF_DIR = Path(os.environ.get("PDF_DIR", "C:/Users/JOG/Zotero/storage"))
+
+# Configuration from environment variables with sensible defaults
 PROJECTS_DIR = Path(os.environ.get("PROJECTS_DIR", str(Path.cwd() / "projects")))
-SUPPORTED_EXT = [".pdf", ".html", ".htm"]
 
-app = FastAPI(title="Zotero-Spatial Local API")
+app = FastAPI(title="Liquid Science API")
 
 # Dev CORS - restrict to common dev ports
 app.add_middleware(
@@ -32,12 +32,11 @@ app.add_middleware(
 
 
 def ensure_dirs() -> None:
-	PDF_DIR.mkdir(parents=True, exist_ok=True)
 	PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def safe_resolve(base: Path, relative: str) -> Path:
-	# Prevent path traversal and ensure file is inside base
+	"""Prevent path traversal and ensure file is inside base."""
 	candidate = (base / relative).resolve()
 	try:
 		base_resolved = base.resolve()
@@ -56,59 +55,105 @@ class SaveRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
 	ensure_dirs()
+	create_db_and_tables()
 
 
 @app.get("/files")
-async def list_files(recursive: Optional[bool] = True) -> List[dict]:
-	"""List supported files (PDF, HTML) under `PDF_DIR` (recursive by default to accommodate Zotero storage)."""
-	files = []
-	for ext in SUPPORTED_EXT:
-		if recursive:
-			iterator = PDF_DIR.rglob(f"*{ext}")
-		else:
-			iterator = PDF_DIR.glob(f"*{ext}")
-		for p in iterator:
-			if p.is_file():
-				stat = p.stat()
-				file_type = "html" if ext in [".html", ".htm"] else "pdf"
+async def list_files(limit: int = 100) -> List[dict]:
+	"""
+	List items from Zotero library with their attachments.
+	Returns a flat list of viewable files (PDFs and HTML snapshots).
+	"""
+	zotero = get_zotero_service()
+
+	if not zotero.is_configured():
+		raise HTTPException(
+			status_code=503,
+			detail="Zotero API not configured. Set ZOTERO_USER_ID and ZOTERO_API_KEY."
+		)
+
+	try:
+		items = zotero.get_library_items(limit=limit)
+
+		# Flatten to a list of files (one entry per attachment)
+		files = []
+		for item in items:
+			for attachment in item.get("attachments", []):
 				files.append({
-					"filename": str(p.relative_to(PDF_DIR)),
-					"type": file_type,
-					"size": stat.st_size,
-					"modified": stat.st_mtime,
+					"key": attachment["key"],
+					"name": item["title"],
+					"filename": attachment.get("filename", ""),
+					"path": attachment["key"],  # Use key as path for compatibility
+					"type": attachment["type"],  # 'pdf' or 'html'
+					"parentKey": item["key"],
+					"itemType": item["itemType"],
+					"creators": item.get("creators", []),
 				})
-	return files
+
+		return files
+
+	except ValueError as e:
+		raise HTTPException(status_code=503, detail=str(e))
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=f"Zotero API error: {str(e)}")
 
 
-@app.get("/pdf/{filename:path}")
-async def get_pdf(filename: str, download: Optional[bool] = False):
-	"""Stream a PDF file by relative path under `PDF_DIR`.
-	Use `filename` as a URL-encoded relative path.
+@app.get("/items")
+async def list_items(limit: int = 100) -> List[dict]:
 	"""
-	try:
-		target = safe_resolve(PDF_DIR, filename)
-	except HTTPException:
-		raise
-	if not target.exists() or not target.is_file():
-		raise HTTPException(status_code=404, detail="File not found")
-	headers = {}
-	if download:
-		headers["Content-Disposition"] = f'attachment; filename="{target.name}"'
-	return FileResponse(path=str(target), media_type="application/pdf", headers=headers)
-
-
-@app.get("/html/{filename:path}")
-async def get_html(filename: str):
-	"""Stream an HTML file by relative path under `PDF_DIR`.
-	Use `filename` as a URL-encoded relative path.
+	List items from Zotero library with full metadata.
+	Returns hierarchical data with items and their attachments.
 	"""
+	zotero = get_zotero_service()
+
+	if not zotero.is_configured():
+		raise HTTPException(
+			status_code=503,
+			detail="Zotero API not configured. Set ZOTERO_USER_ID and ZOTERO_API_KEY."
+		)
+
 	try:
-		target = safe_resolve(PDF_DIR, filename)
-	except HTTPException:
-		raise
-	if not target.exists() or not target.is_file():
-		raise HTTPException(status_code=404, detail="File not found")
-	return FileResponse(path=str(target), media_type="text/html")
+		return zotero.get_library_items(limit=limit)
+	except ValueError as e:
+		raise HTTPException(status_code=503, detail=str(e))
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=f"Zotero API error: {str(e)}")
+
+
+@app.get("/file/{attachment_key}")
+async def get_file(attachment_key: str, download: Optional[bool] = False):
+	"""
+	Stream a file (PDF or HTML) by Zotero attachment key.
+	Downloads from Zotero API if not cached locally.
+	"""
+	zotero = get_zotero_service()
+
+	if not zotero.is_configured():
+		raise HTTPException(
+			status_code=503,
+			detail="Zotero API not configured. Set ZOTERO_USER_ID and ZOTERO_API_KEY."
+		)
+
+	try:
+		file_path, content_type = zotero.get_attachment_file(attachment_key)
+
+		if not file_path.exists():
+			raise HTTPException(status_code=404, detail="File not found")
+
+		headers = {}
+		if download:
+			headers["Content-Disposition"] = f'attachment; filename="{file_path.name}"'
+
+		return FileResponse(
+			path=str(file_path),
+			media_type=content_type,
+			headers=headers
+		)
+
+	except FileNotFoundError as e:
+		raise HTTPException(status_code=404, detail=str(e))
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=f"Error fetching file: {str(e)}")
 
 
 @app.post("/save")

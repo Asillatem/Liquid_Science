@@ -1,5 +1,8 @@
 backend/venv/
+backend/cache/
+backend/*.db
 __pycache__/
 .env
 devcontainer/
 nul
+node_modules/
